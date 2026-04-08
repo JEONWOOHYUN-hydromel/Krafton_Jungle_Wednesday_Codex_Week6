@@ -604,6 +604,64 @@ gcc -Wall -Wextra -std=c11 -pedantic -o sql_processor main.c parser.c storage.c
 
 ---
 
+## 16-1. 실제 실행 확인 결과
+
+이 프로젝트는 Docker 컨테이너 환경에서 실제로 빌드와 실행을 확인했습니다.  
+로컬 환경에 `gcc`, `make`가 없더라도 Docker가 있으면 동일하게 검증할 수 있습니다.
+
+### 실행에 사용한 명령
+
+```bash
+make clean && make
+./sql_processor -f examples/01_insert_woo.sql
+./sql_processor -f examples/02_insert_alice.sql
+./sql_processor -f examples/03_select_users.sql
+./sql_processor -f examples/04_invalid.sql
+./sql_processor -f examples/05_select_missing.sql
+./sql_processor "SELECT * FROM users;"
+```
+
+### 실제 확인된 출력
+
+```text
+[OK] inserted into users
+[OK] inserted into users
+[RESULT] users
+1,woo
+2,alice
+[ERROR] invalid SQL syntax
+[ERROR] table file not found: data/missing_table.csv
+[RESULT] users
+1,woo
+2,alice
+```
+
+### 실행 결과 해석
+
+- 첫 번째 INSERT 성공
+- 두 번째 INSERT 성공
+- SELECT 전체 조회 성공
+- 잘못된 SQL에 대한 문법 에러 정상 출력
+- 존재하지 않는 테이블 파일에 대한 에러 정상 출력
+- SQL 문자열 직접 입력 방식도 정상 동작
+
+### 실행 후 `data/users.csv` 상태
+
+```text
+1,woo
+2,alice
+```
+
+즉, 구현한 프로그램이 실제로 아래 요구사항을 만족하는 것을 확인했습니다.
+
+- SQL 파일 입력 가능
+- SQL 문자열 직접 입력 가능
+- INSERT 시 CSV 파일에 데이터 추가
+- SELECT 시 CSV 파일 전체 조회
+- 에러 상황에서 적절한 에러 메시지 출력
+
+---
+
 ## 17. 구현에서 중요한 함수들
 
 ### `main.c`
