@@ -4,7 +4,85 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "utils.h"
+static void safe_copy(char *dest, size_t dest_size, const char *src) {
+    if (dest == NULL || dest_size == 0) {
+        return;
+    }
+
+    if (src == NULL) {
+        dest[0] = '\0';
+        return;
+    }
+
+    snprintf(dest, dest_size, "%s", src);
+}
+
+static void trim_whitespace(char *text) {
+    char *start;
+    char *end;
+    size_t length;
+
+    if (text == NULL || text[0] == '\0') {
+        return;
+    }
+
+    start = text;
+    while (*start != '\0' && isspace((unsigned char)*start)) {
+        start++;
+    }
+
+    if (start != text) {
+        memmove(text, start, strlen(start) + 1);
+    }
+
+    length = strlen(text);
+    if (length == 0) {
+        return;
+    }
+
+    end = text + length - 1;
+    while (end >= text && isspace((unsigned char)*end)) {
+        *end = '\0';
+        if (end == text) {
+            break;
+        }
+        end--;
+    }
+}
+
+static void strip_trailing_semicolon(char *text) {
+    size_t length;
+
+    if (text == NULL) {
+        return;
+    }
+
+    trim_whitespace(text);
+    length = strlen(text);
+    if (length > 0 && text[length - 1] == ';') {
+        text[length - 1] = '\0';
+        trim_whitespace(text);
+    }
+}
+
+static int starts_with_ignore_case(const char *text, const char *prefix) {
+    size_t index;
+
+    if (text == NULL || prefix == NULL) {
+        return 0;
+    }
+
+    for (index = 0; prefix[index] != '\0'; index++) {
+        if (text[index] == '\0') {
+            return 0;
+        }
+        if (tolower((unsigned char)text[index]) != tolower((unsigned char)prefix[index])) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
 
 static void skip_spaces(const char **cursor) {
     while (**cursor != '\0' && isspace((unsigned char)**cursor)) {
@@ -272,7 +350,6 @@ static int parse_select_query(const char *sql, Query *query,
     }
 
     query->type = QUERY_SELECT;
-    query->select_all = 1;
     return 1;
 }
 
@@ -300,8 +377,6 @@ int parse_sql(const char *sql, Query *query, char *error_message, size_t error_s
         snprintf(error_message, error_size, "empty SQL input");
         return 0;
     }
-
-    safe_copy(query->raw_sql, sizeof(query->raw_sql), buffer);
 
     if (starts_with_ignore_case(buffer, "INSERT")) {
         return parse_insert_query(buffer, query, error_message, error_size);

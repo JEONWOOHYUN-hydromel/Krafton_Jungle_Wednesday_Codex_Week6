@@ -1,80 +1,74 @@
 # Simple SQL Processor in C
 
-This project is a small educational SQL processor written in C.
-It accepts a SQL string or a SQL file from the command line, parses a limited SQL grammar, executes the query, and stores table data in CSV files.
+This project is a very small SQL processor for education and assignments.
+It does not try to behave like a full DBMS.
+It only supports the minimum required flow:
+
+- read SQL from CLI or file
+- parse the SQL string directly
+- execute `INSERT` or `SELECT`
+- store table data in CSV files
 
 Supported SQL:
 
-- `INSERT INTO table VALUES (...)`
-- `SELECT * FROM table;`
+- `INSERT INTO users VALUES (1, 'woo');`
+- `INSERT INTO users VALUES (2, 'alice', 25);`
+- `SELECT * FROM users;`
 
 Not supported:
 
 - `CREATE TABLE`
+- AST
+- separate lexer
+- index or B-Tree
 - `WHERE`
-- column-specific `SELECT`
-- `UPDATE`
-- `DELETE`
+- `UPDATE`, `DELETE`
 
-## Design Summary
+## Design Idea
 
-The design is intentionally simple and presentation-friendly.
-Instead of building a full DBMS, the program is split into four easy-to-explain layers:
+The project keeps the structure intentionally simple:
 
-1. CLI input handling
-2. SQL parsing
-3. Query execution
-4. CSV file storage
+1. `main.c`
+   Handles CLI input and runs the query.
+2. `parser.c`
+   Parses the SQL string directly into a `Query` structure.
+3. `storage.c`
+   Saves and reads CSV files.
+4. `query.h`
+   Defines the shared `Query` structure.
 
 ```mermaid
 flowchart LR
-    A["CLI Input"] --> B["main.c"]
+    A["CLI input"] --> B["main.c"]
     B --> C["parser.c"]
-    C --> D["Query struct"]
-    D --> E["executor.c"]
-    E --> F["storage.c"]
-    F --> G["data/<table>.csv"]
+    C --> D["Query"]
+    D --> E["storage.c"]
+    E --> F["data/<table>.csv"]
 ```
 
 ## Project Structure
 
 - `main.c`
-  Thin entry point. Reads CLI arguments, loads SQL text, calls parser and executor.
-- `query.h`
-  Shared query model and constants such as `QueryType`, max lengths, and data directory.
 - `parser.c`, `parser.h`
-  Converts SQL text into a `Query` structure.
-- `executor.c`, `executor.h`
-  Dispatches parsed queries to storage functions.
 - `storage.c`, `storage.h`
-  Handles CSV append and CSV read operations.
-- `utils.c`, `utils.h`
-  Helper functions for trimming, string copy, file reading, and argument joining.
-- `examples/`
-  Example SQL files for feature tests.
-- `data/`
-  CSV files used as table storage.
-- `docs/architecture.md`
-  Detailed architecture and diagrams for presentation or report use.
+- `query.h`
 - `Makefile`
-  Build and test commands.
+- `examples/`
+- `data/`
+- `docs/architecture.md`
 
-## Module Responsibilities
+## File Responsibilities
 
-```mermaid
-flowchart TB
-    MAIN["main.c\nCLI handling only"] --> PARSER["parser.c\nSQL -> Query"]
-    PARSER --> EXEC["executor.c\nroute by QueryType"]
-    EXEC --> STORAGE["storage.c\nCSV append/read"]
-    MAIN --> UTILS["utils.c\nstring/file helpers"]
-    PARSER --> QUERY["query.h\nshared structures"]
-    EXEC --> QUERY
-    STORAGE --> QUERY
-```
+- `main.c`
+  Reads arguments, loads SQL text, calls parser, and executes the query.
+- `parser.c`
+  Checks whether the SQL is `INSERT` or `SELECT`, then fills a `Query`.
+- `storage.c`
+  Maps table names to CSV files and performs append or full read.
+- `query.h`
+  Defines `QueryType`, `Query`, and common size limits.
 
-## Query Model
-
-The core data model is the `Query` structure declared in `query.h`.
+## Query Structure
 
 ```c
 typedef enum {
@@ -88,19 +82,16 @@ typedef struct {
     char table_name[MAX_TABLE_NAME_LENGTH];
     char values[MAX_VALUES][MAX_VALUE_LENGTH];
     int value_count;
-    int select_all;
-    char raw_sql[MAX_SQL_LENGTH];
 } Query;
 ```
 
-Why this is useful:
+This is enough because the project only needs:
 
-- one structure represents both supported SQL commands
-- executor logic stays simple
-- parser and storage are loosely coupled
-- the code is easy to explain in a class presentation
+- query type
+- target table
+- inserted values
 
-## Execution Flow
+## How It Works
 
 ### INSERT flow
 
@@ -109,18 +100,15 @@ sequenceDiagram
     participant User
     participant Main as main.c
     participant Parser as parser.c
-    participant Executor as executor.c
     participant Storage as storage.c
     participant CSV as data/users.csv
 
-    User->>Main: pass SQL string or -f file
-    Main->>Parser: parse_sql(sql, &query)
-    Parser-->>Main: Query(type=QUERY_INSERT)
-    Main->>Executor: execute_query(&query)
-    Executor->>Storage: storage_insert(&query)
-    Storage->>CSV: append one CSV row
-    Storage-->>Executor: success
-    Executor-->>User: [OK] inserted into users
+    User->>Main: INSERT INTO users VALUES (...)
+    Main->>Parser: parse_sql()
+    Parser-->>Main: Query
+    Main->>Storage: storage_insert()
+    Storage->>CSV: append one line
+    Main-->>User: [OK] inserted into users
 ```
 
 ### SELECT flow
@@ -130,58 +118,36 @@ sequenceDiagram
     participant User
     participant Main as main.c
     participant Parser as parser.c
-    participant Executor as executor.c
     participant Storage as storage.c
     participant CSV as data/users.csv
 
-    User->>Main: pass SQL string or -f file
-    Main->>Parser: parse_sql(sql, &query)
-    Parser-->>Main: Query(type=QUERY_SELECT)
-    Main->>Executor: execute_query(&query)
-    Executor->>Storage: storage_select_all(&query)
-    Storage->>CSV: read all rows
-    CSV-->>Storage: CSV lines
-    Storage-->>User: [RESULT] users + rows
+    User->>Main: SELECT * FROM users;
+    Main->>Parser: parse_sql()
+    Parser-->>Main: Query
+    Main->>Storage: storage_select_all()
+    Storage->>CSV: read all lines
+    Main-->>User: [RESULT] users + rows
 ```
 
-## CSV Storage Model
+## CSV Storage Rule
 
-Each table is managed by exactly one CSV file.
+Each table is one CSV file:
 
 - `users` -> `data/users.csv`
 - `orders` -> `data/orders.csv`
 
-```mermaid
-flowchart TB
-    T["table name: users"] --> P["build path"]
-    P --> F["data/users.csv"]
-    Q1["INSERT INTO users VALUES (1, 'woo');"] --> R1["1,woo"]
-    Q2["INSERT INTO users VALUES (2, 'alice');"] --> R2["2,alice"]
-    R1 --> F
-    R2 --> F
+Example:
+
+```text
+INSERT INTO users VALUES (1, 'woo');
+INSERT INTO users VALUES (2, 'alice');
 ```
 
-Example file content:
+Stored as:
 
 ```text
 1,woo
 2,alice
-```
-
-## CLI Usage
-
-### Pass SQL directly
-
-```bash
-./sql_processor "INSERT INTO users VALUES (1, 'woo');"
-./sql_processor "SELECT * FROM users;"
-```
-
-### Pass a SQL file
-
-```bash
-./sql_processor -f examples/01_insert_woo.sql
-./sql_processor -f examples/03_select_users.sql
 ```
 
 ## Build
@@ -190,32 +156,37 @@ Example file content:
 make
 ```
 
-Direct compile command:
+Or:
 
 ```bash
-gcc -Wall -Wextra -std=c11 -pedantic -o sql_processor main.c parser.c executor.c storage.c utils.c
+gcc -Wall -Wextra -std=c11 -pedantic -o sql_processor main.c parser.c storage.c
 ```
 
-## Test Scenarios
+## Run
 
-Use the included example SQL files:
+### Pass SQL directly
+
+```bash
+./sql_processor "INSERT INTO users VALUES (1, 'woo');"
+./sql_processor "SELECT * FROM users;"
+```
+
+### Pass SQL file
+
+```bash
+./sql_processor -f examples/01_insert_woo.sql
+./sql_processor -f examples/03_select_users.sql
+```
+
+## Test Examples
+
+Included files:
 
 1. `examples/01_insert_woo.sql`
 2. `examples/02_insert_alice.sql`
 3. `examples/03_select_users.sql`
 4. `examples/04_invalid.sql`
 5. `examples/05_select_missing.sql`
-
-```mermaid
-flowchart TD
-    A["Test 1: INSERT woo"] --> B["Expect OK"]
-    C["Test 2: INSERT alice"] --> D["Expect OK"]
-    E["Test 3: SELECT users"] --> F["Expect 2 rows"]
-    G["Test 4: invalid SQL"] --> H["Expect syntax error"]
-    I["Test 5: missing table"] --> J["Expect missing file error"]
-```
-
-Run them one by one:
 
 ```bash
 ./sql_processor -f examples/01_insert_woo.sql
@@ -225,56 +196,42 @@ Run them one by one:
 ./sql_processor -f examples/05_select_missing.sql
 ```
 
-Or run:
+## Why This Version Is Simple
 
-```bash
-make test
-```
+- no AST
+- no lexer module
+- no optimizer
+- no index
+- no B-Tree
+- no schema engine
 
-## Error Handling
+The parser directly reads the SQL string, and the storage layer directly reads or writes CSV files.
 
-The code includes explicit error handling for:
+## Core Explanation Points
 
-- empty SQL input
-- unsupported SQL syntax
-- unterminated quoted strings
-- too many values
-- table file not found
-- CSV write failure
-- malformed CSV rows
+1. SQL parsing method  
+   `parser.c` checks keywords like `INSERT`, `INTO`, `VALUES`, `SELECT`, and `FROM` directly.
 
-Example output:
+2. INSERT execution  
+   `main.c` sends the parsed query to `storage_insert()`, which appends a CSV row.
 
-```text
-[ERROR] invalid SQL syntax
-[ERROR] table file not found: data/missing_table.csv
-```
+3. SELECT execution  
+   `main.c` sends the parsed query to `storage_select_all()`, which reads the whole CSV file and prints it.
 
-## Why This Structure Works Well
-
-- `main.c` stays thin and easy to explain
-- parsing, execution, and storage are clearly separated
-- the code is small enough for an assignment
-- each module has a single responsibility
-- extension points are obvious
+4. CSV storage method  
+   One table corresponds to one CSV file, and one `INSERT` corresponds to one line.
 
 ## Limitations
 
+- only supports a tiny SQL subset
 - no schema validation
 - no type checking
-- no column name support
-- no multiple statements in one input
-- no `WHERE`, `UPDATE`, or `DELETE`
+- full scan only
+- no condition search
 
 ## Extension Ideas
 
-- `SELECT name FROM users;`
-- `WHERE id = 1`
-- schema file support
-- column count validation
 - multiple SQL statements in one file
-- `UPDATE` and `DELETE`
-
-## More Detailed Docs
-
-See `docs/architecture.md` for a fuller explanation with more diagrams and speaking points.
+- simple column count validation
+- `WHERE`
+- `UPDATE`, `DELETE`

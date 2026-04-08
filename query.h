@@ -19,8 +19,6 @@ typedef struct {
     char table_name[MAX_TABLE_NAME_LENGTH];
     char values[MAX_VALUES][MAX_VALUE_LENGTH];
     int value_count;
-    int select_all;
-    char raw_sql[MAX_SQL_LENGTH];
 } Query;
 
 #endif

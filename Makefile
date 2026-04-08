@@ -1,7 +1,7 @@
 CC ?= gcc
 CFLAGS ?= -Wall -Wextra -std=c11 -pedantic
 TARGET = sql_processor
-SRCS = main.c parser.c executor.c storage.c utils.c
+SRCS = main.c parser.c storage.c
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all clean test
